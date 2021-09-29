@@ -1,3 +1,9 @@
+# shapenet
 python train_segmentation.py --dataset ../shapenetcore_partanno_segmentation_benchmark_v0 --nepoch=10
 
 python show_seg.py --dataset ../shapenetcore_partanno_segmentation_benchmark_v0 --model seg/seg_model_Chair_1.pth --class_choice Chair --idx 1
+
+# custom data
+python train_segmentation.py --dataset ../shapenetcore_partanno_segmentation_benchmark_v0 --nepoch=10 --class_choice inropa --batchSize 4
+
+python show_seg.py --dataset ../shapenetcore_partanno_segmentation_benchmark_v0 --model seg/seg_model_inropa_1.pth --class_choice inropa

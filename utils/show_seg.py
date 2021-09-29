@@ -19,6 +19,7 @@ parser.add_argument('--model', type=str, default='', help='model path')
 parser.add_argument('--idx', type=int, default=0, help='model index')
 parser.add_argument('--dataset', type=str, default='', help='dataset path')
 parser.add_argument('--class_choice', type=str, default='', help='class choice')
+parser.add_argument('--npoints', type=int, default=2500, help='number of points per sample')
 
 opt = parser.parse_args()
 print(opt)
@@ -27,6 +28,8 @@ d = ShapeNetDataset(
     root=opt.dataset,
     class_choice=[opt.class_choice],
     split='test',
+    data='inropa' if opt.class_choice == "inropa" else 'shuffled',
+    npoints=opt.npoints,
     data_augmentation=False)
 
 idx = opt.idx
