@@ -5,7 +5,7 @@ import os.path
 import torch
 import numpy as np
 import sys
-from tqdm import tqdm 
+from tqdm import tqdm
 import json
 from plyfile import PlyData, PlyElement
 
@@ -27,7 +27,7 @@ def get_segmentation_classes(root):
         for fn in fns:
             token = (os.path.splitext(os.path.basename(fn))[0])
             meta[item].append((os.path.join(dir_point, token + '.pts'), os.path.join(dir_seg, token + '.seg')))
-    
+
     with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), '../misc/num_seg_classes.txt'), 'w') as f:
         for item in cat:
             datapath = []
@@ -60,7 +60,8 @@ class ShapeNetDataset(data.Dataset):
                  classification=False,
                  class_choice=None,
                  split='train',
-                 data_augmentation=True):
+                 data_augmentation=True,
+                 data='shuffled'):
         self.npoints = npoints
         self.root = root
         self.catfile = os.path.join(self.root, 'synsetoffset2category.txt')
@@ -68,7 +69,9 @@ class ShapeNetDataset(data.Dataset):
         self.data_augmentation = data_augmentation
         self.classification = classification
         self.seg_classes = {}
-        
+
+        print(root)
+
         with open(self.catfile, 'r') as f:
             for line in f:
                 ls = line.strip().split()
@@ -76,13 +79,15 @@ class ShapeNetDataset(data.Dataset):
         #print(self.cat)
         if not class_choice is None:
             self.cat = {k: v for k, v in self.cat.items() if k in class_choice}
+        print(self.cat)
 
         self.id2cat = {v: k for k, v in self.cat.items()}
 
         self.meta = {}
-        splitfile = os.path.join(self.root, 'train_test_split', 'shuffled_{}_file_list.json'.format(split))
+        splitfile = os.path.join(self.root, 'train_test_split', '{}_{}_file_list.json'.format(data,split))
         #from IPython import embed; embed()
         filelist = json.load(open(splitfile, 'r'))
+        #print(filelist)
         for item in self.cat:
             self.meta[item] = []
 
@@ -98,7 +103,6 @@ class ShapeNetDataset(data.Dataset):
                 self.datapath.append((item, fn[0], fn[1]))
 
         self.classes = dict(zip(sorted(self.cat), range(len(self.cat))))
-        print(self.classes)
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), '../misc/num_seg_classes.txt'), 'r') as f:
             for line in f:
                 ls = line.strip().split()
@@ -129,6 +133,7 @@ class ShapeNetDataset(data.Dataset):
 
         seg = seg[choice]
         point_set = torch.from_numpy(point_set)
+        #print(point_set,seg)
         seg = torch.from_numpy(seg)
         cls = torch.from_numpy(np.array([cls]).astype(np.int64))
 
@@ -212,4 +217,3 @@ if __name__ == '__main__':
         d = ModelNetDataset(root=datapath)
         print(len(d))
         print(d[0])
-

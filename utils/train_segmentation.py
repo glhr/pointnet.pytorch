@@ -37,7 +37,8 @@ torch.manual_seed(opt.manualSeed)
 dataset = ShapeNetDataset(
     root=opt.dataset,
     classification=False,
-    class_choice=[opt.class_choice])
+    class_choice=[opt.class_choice],
+    data='inropa' if opt.class_choice == "inropa" else 'shuffled')
 dataloader = torch.utils.data.DataLoader(
     dataset,
     batch_size=opt.batchSize,
@@ -49,7 +50,8 @@ test_dataset = ShapeNetDataset(
     classification=False,
     class_choice=[opt.class_choice],
     split='test',
-    data_augmentation=False)
+    data_augmentation=False,
+    data='inropa' if opt.class_choice == "inropa" else 'shuffled')
 testdataloader = torch.utils.data.DataLoader(
     test_dataset,
     batch_size=opt.batchSize,
