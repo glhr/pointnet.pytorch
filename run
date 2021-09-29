@@ -1,0 +1,3 @@
+python train_segmentation.py --dataset ../shapenetcore_partanno_segmentation_benchmark_v0 --nepoch=10
+
+python show_seg.py --dataset ../shapenetcore_partanno_segmentation_benchmark_v0 --model seg/seg_model_Chair_1.pth --class_choice Chair --idx 1
