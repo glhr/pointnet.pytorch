@@ -25,6 +25,7 @@ parser.add_argument('--model', type=str, default='', help='model path')
 parser.add_argument('--dataset', type=str, required=True, help="dataset path")
 parser.add_argument('--class_choice', type=str, default='Chair', help="class_choice")
 parser.add_argument('--feature_transform', action='store_true', help="use feature transform")
+parser.add_argument('--npoints', type=int, default=2500, help='number of points per sample')
 
 opt = parser.parse_args()
 print(opt)
@@ -38,7 +39,8 @@ dataset = ShapeNetDataset(
     root=opt.dataset,
     classification=False,
     class_choice=[opt.class_choice],
-    data='inropa' if opt.class_choice == "inropa" else 'shuffled')
+    data='inropa' if opt.class_choice == "inropa" else 'shuffled',
+    npoints=opt.npoints)
 dataloader = torch.utils.data.DataLoader(
     dataset,
     batch_size=opt.batchSize,
@@ -51,7 +53,8 @@ test_dataset = ShapeNetDataset(
     class_choice=[opt.class_choice],
     split='test',
     data_augmentation=False,
-    data='inropa' if opt.class_choice == "inropa" else 'shuffled')
+    data='inropa' if opt.class_choice == "inropa" else 'shuffled',
+    npoints=opt.npoints)
 testdataloader = torch.utils.data.DataLoader(
     test_dataset,
     batch_size=opt.batchSize,
