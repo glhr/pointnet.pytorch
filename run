@@ -7,3 +7,8 @@ python show_seg.py --dataset ../shapenetcore_partanno_segmentation_benchmark_v0 
 python train_segmentation.py --dataset ../shapenetcore_partanno_segmentation_benchmark_v0 --nepoch=10 --class_choice inropa --batchSize 4
 
 python show_seg.py --dataset ../shapenetcore_partanno_segmentation_benchmark_v0 --model seg/seg_model_inropa_1.pth --class_choice inropa
+
+
+## pytorch lightning
+
+python3 train_segmentation_lightning.py --test --npoints 4000 --show_gt
