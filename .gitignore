@@ -10,3 +10,7 @@ seg/
 *.egg-info/
 
 venv/
+
+utils/lightning_logs/
+
+utils/wandb/
