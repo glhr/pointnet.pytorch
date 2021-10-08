@@ -12,6 +12,7 @@ from pointnet.model import PointNetDenseCls, feature_transform_regularizer
 import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
+from collections import Counter
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
@@ -36,6 +37,7 @@ parser.add_argument('--gpus', type=int, default=torch.cuda.device_count())
 parser.add_argument('--test', action='store_true', default=False)
 parser.add_argument('--viz', action='store_true', default=False)
 parser.add_argument('--show_gt', action='store_true', default=False)
+parser.add_argument('--stats', action='store_true', default=False)
 
 RANDOM_SEED = 2  # fix seed
 # print("Random Seed: ", RANDOM_SEED)
@@ -71,6 +73,7 @@ class LitPointNet(pl.LightningModule):
 
         self.optimizer = optim.Adam(self.classifier.parameters(), lr=0.001, betas=(0.9, 0.999))
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=20, gamma=0.5)
+        self.loss = torch.nn.NLLLoss(weight=torch.Tensor([4.47,1], device=self.device))
 
         self.test_acc, self.val_acc, self.train_acc = torchmetrics.Accuracy(), torchmetrics.Accuracy(), torchmetrics.Accuracy()
         self.test_mIoU, self.val_mIoU, self.train_mIoU = torchmetrics.IoU(num_classes=self.num_classes), torchmetrics.IoU(num_classes=self.num_classes), torchmetrics.IoU(num_classes=self.num_classes)
@@ -87,6 +90,18 @@ class LitPointNet(pl.LightningModule):
 
         os.makedirs(self.hparams.outf, exist_ok=True)
 
+        if args.stats:
+            self.get_dataset_stats()
+
+    def get_dataset_stats(self):
+        targets = Counter({'1': 0, '2':0})
+        for _, target in tqdm(self.test_dataloader()):
+            unique, counts = torch.unique(target, return_counts=True)
+            unique = [str(u.item()) for u in unique]
+            targets = targets + Counter(dict(zip(unique, counts)))
+            #targets[target] += 1
+        print(targets)
+
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
         # logger.debug(x.shape)
@@ -98,12 +113,13 @@ class LitPointNet(pl.LightningModule):
     def predict(self, batch, set):
         points, target = batch
         points = points.transpose(2, 1)
+        points, target = points, target
 
         pred, trans, trans_feat = self.forward(points)
         pred = pred.view(-1, self.num_classes)
         target = target.view(-1, 1)[:, 0] - 1
         #print(pred.size(), target.size())
-        loss = F.nll_loss(pred, target)
+        loss = self.loss(pred, target)
         if self.hparams.feature_transform:
             loss += feature_transform_regularizer(trans_feat) * 0.001
 
@@ -171,7 +187,7 @@ class LitPointNet(pl.LightningModule):
     def test_dataloader(self):
         return torch.utils.data.DataLoader(
             self.test_dataset,
-            batch_size=1,
+            batch_size=self.hparams.bs,
             shuffle=False,
             num_workers=self.hparams.workers)
 
