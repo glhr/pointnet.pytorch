@@ -111,36 +111,40 @@ class ShapeNetDataset(data.Dataset):
         print(self.seg_classes, self.num_seg_classes)
 
     def __getitem__(self, index):
-        fn = self.datapath[index]
-        cls = self.classes[self.datapath[index][0]]
-        point_set = np.loadtxt(fn[1]).astype(np.float32)
-        seg = np.loadtxt(fn[2]).astype(np.int64)
-        #print(point_set.shape, seg.shape)
 
-        choice = np.random.choice(len(seg), self.npoints, replace=True)
-        #resample
-        point_set = point_set[choice, :]
+        try:
+            fn = self.datapath[index]
+            cls = self.classes[self.datapath[index][0]]
+            point_set = np.loadtxt(fn[1]).astype(np.float32)
+            seg = np.loadtxt(fn[2]).astype(np.int64)
+            #print(point_set.shape, seg.shape)
 
-        point_set = point_set - np.expand_dims(np.mean(point_set, axis = 0), 0) # center
-        dist = np.max(np.sqrt(np.sum(point_set ** 2, axis = 1)),0)
-        point_set = point_set / dist #scale
+            choice = np.random.choice(len(seg), self.npoints, replace=True)
+            #resample
+            point_set = point_set[choice, :]
 
-        if self.data_augmentation:
-            theta = np.random.uniform(0,np.pi*2)
-            rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
-            point_set[:,[0,2]] = point_set[:,[0,2]].dot(rotation_matrix) # random rotation
-            point_set += np.random.normal(0, 0.02, size=point_set.shape) # random jitter
+            point_set = point_set - np.expand_dims(np.mean(point_set, axis = 0), 0) # center
+            dist = np.max(np.sqrt(np.sum(point_set ** 2, axis = 1)),0)
+            point_set = point_set / dist #scale
 
-        seg = seg[choice]
-        point_set = torch.from_numpy(point_set)
-        #print(point_set,seg)
-        seg = torch.from_numpy(seg)
-        cls = torch.from_numpy(np.array([cls]).astype(np.int64))
+            if self.data_augmentation:
+                theta = np.random.uniform(0,np.pi*2)
+                rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
+                point_set[:,[0,2]] = point_set[:,[0,2]].dot(rotation_matrix) # random rotation
+                point_set += np.random.normal(0, 0.02, size=point_set.shape) # random jitter
 
-        if self.classification:
-            return point_set, cls
-        else:
-            return point_set, seg
+            seg = seg[choice]
+            point_set = torch.from_numpy(point_set)
+            #print(point_set,seg)
+            seg = torch.from_numpy(seg)
+            cls = torch.from_numpy(np.array([cls]).astype(np.int64))
+
+            if self.classification:
+                return point_set, cls
+            else:
+                return point_set, seg
+        except Exception as e:
+            print(f"Failed to load sample {self.datapath[index]}: {e}")
 
     def __len__(self):
         return len(self.datapath)

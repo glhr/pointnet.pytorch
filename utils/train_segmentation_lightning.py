@@ -98,7 +98,6 @@ class LitPointNet(pl.LightningModule):
     def predict(self, batch, set):
         points, target = batch
         points = points.transpose(2, 1)
-        points, target = points, target
 
         pred, trans, trans_feat = self.forward(points)
         pred = pred.view(-1, self.num_classes)
@@ -120,31 +119,6 @@ class LitPointNet(pl.LightningModule):
         self.log(f'{set}_cIoU_2', cIoU[1], on_epoch=True)
 
         return loss
-
-    def calc_iou(self,batch,set):
-        points, target = batch
-        points = points.transpose(2, 1)
-
-        pred, _, _ = self.classifier(points)
-        pred_choice = pred.data.max(2)[1]
-
-        pred_np = pred_choice.cpu().data.numpy()
-        target_np = target.cpu().data.numpy() - 1
-
-        for shape_idx in range(target_np.shape[0]):
-            parts = range(self.num_classes)#np.unique(target_np[shape_idx])
-            part_ious = []
-            for part in parts:
-                I = np.sum(np.logical_and(pred_np[shape_idx] == part, target_np[shape_idx] == part))
-                U = np.sum(np.logical_or(pred_np[shape_idx] == part, target_np[shape_idx] == part))
-                if U == 0:
-                    iou = 1 #If the union of groundtruth and prediction points is empty, then count part IoU as 1
-                else:
-                    iou = I / float(U)
-                part_ious.append(iou)
-            # print("part IoUs for class {}: {}".format(self.hparams.class_choice, part_ious))
-            self.log(f'{set}_IoU_1', part_ious[0], on_epoch=True)
-            self.log(f'{set}_IoU_2', part_ious[1], on_epoch=True)
 
     def validation_step(self, batch, batch_idx):
         return self.predict(batch, set="val")
