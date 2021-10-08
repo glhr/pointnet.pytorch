@@ -36,6 +36,7 @@ parser.add_argument('--feature_transform', action='store_true', help="use featur
 parser.add_argument('--npoints', type=int, default=2500, help='number of points per sample')
 parser.add_argument('--gpus', type=int, default=torch.cuda.device_count())
 parser.add_argument('--test', action='store_true', default=False)
+parser.add_argument('--viz', action='store_true', default=False)
 parser.add_argument('--show_gt', action='store_true', default=False)
 
 RANDOM_SEED = 2  # fix seed
@@ -105,6 +106,31 @@ class LitPointNet(pl.LightningModule):
 
         return loss
 
+    def calc_iou(self,batch,set):
+        points, target = batch
+        points = points.transpose(2, 1)
+
+        pred, _, _ = self.classifier(points)
+        pred_choice = pred.data.max(2)[1]
+
+        pred_np = pred_choice.cpu().data.numpy()
+        target_np = target.cpu().data.numpy() - 1
+
+        for shape_idx in range(target_np.shape[0]):
+            parts = range(self.num_classes)#np.unique(target_np[shape_idx])
+            part_ious = []
+            for part in parts:
+                I = np.sum(np.logical_and(pred_np[shape_idx] == part, target_np[shape_idx] == part))
+                U = np.sum(np.logical_or(pred_np[shape_idx] == part, target_np[shape_idx] == part))
+                if U == 0:
+                    iou = 1 #If the union of groundtruth and prediction points is empty, then count part IoU as 1
+                else:
+                    iou = I / float(U)
+                part_ious.append(iou)
+            # print("part IoUs for class {}: {}".format(self.hparams.class_choice, part_ious))
+            self.log(f'{set}_IoU_1', part_ious[0], on_epoch=True)
+            self.log(f'{set}_IoU_2', part_ious[1], on_epoch=True)
+
     def validation_step(self, batch, batch_idx):
         return self.predict(batch, set="val")
 
@@ -112,29 +138,30 @@ class LitPointNet(pl.LightningModule):
         return self.predict(batch, set="train")
 
     def test_step(self, batch, batch_idx):
+        self.calc_iou(batch, set="test")
+        if args.viz:
+            point, seg = batch
+            point = point[0]
+            seg = seg[0]
+            # print(point.size(), seg.size())
+            point_np = point.cpu().numpy()
 
-        point, seg = batch
-        point = point[0]
-        seg = seg[0]
-        # print(point.size(), seg.size())
-        point_np = point.cpu().numpy()
+            cmap = plt.cm.get_cmap("hsv", 10)
+            cmap = np.array([cmap(i) for i in range(10)])[:, :3]
+            gt = cmap[seg.cpu().numpy() - 1, :]
 
-        cmap = plt.cm.get_cmap("hsv", 10)
-        cmap = np.array([cmap(i) for i in range(10)])[:, :3]
-        gt = cmap[seg.cpu().numpy() - 1, :]
+            point = point.transpose(1, 0).contiguous()
 
-        point = point.transpose(1, 0).contiguous()
+            point = Variable(point.view(1, point.size()[0], point.size()[1]))
+            pred, _, _ = self.classifier(point)
+            pred_choice = pred.data.max(2)[1]
+            # print(pred_choice)
 
-        point = Variable(point.view(1, point.size()[0], point.size()[1]))
-        pred, _, _ = self.classifier(point)
-        pred_choice = pred.data.max(2)[1]
-        # print(pred_choice)
+            #print(pred_choice.size())
+            pred_color = cmap[pred_choice.cpu().numpy()[0], :]
 
-        #print(pred_choice.size())
-        pred_color = cmap[pred_choice.cpu().numpy()[0], :]
-
-        #print(pred_color.shape)
-        showpoints(point_np, c_gt=gt if args.show_gt else None, c_pred=pred_color)
+            #print(pred_color.shape)
+            showpoints(point_np, c_gt=gt if args.show_gt else None, c_pred=pred_color)
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
@@ -164,7 +191,7 @@ if __name__ == '__main__':
     prefix = "pointnet"
 
     if args.test:
-        pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-last.ckpt")
+        pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-epoch=530-val_loss=0.2393.ckpt")
         #pointnet_model.eval()
         trainer = pl.Trainer.from_argparse_args(args, accelerator="dp")
         trainer.test(pointnet_model)
