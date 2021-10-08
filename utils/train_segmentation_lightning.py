@@ -13,13 +13,11 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
 
-from show3d_balls import showpoints
-import matplotlib.pyplot as plt
-
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.callbacks.base import Callback
+import torchmetrics
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -74,6 +72,19 @@ class LitPointNet(pl.LightningModule):
         self.optimizer = optim.Adam(self.classifier.parameters(), lr=0.001, betas=(0.9, 0.999))
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=20, gamma=0.5)
 
+        self.test_acc, self.val_acc, self.train_acc = torchmetrics.Accuracy(), torchmetrics.Accuracy(), torchmetrics.Accuracy()
+        self.test_mIoU, self.val_mIoU, self.train_mIoU = torchmetrics.IoU(num_classes=self.num_classes), torchmetrics.IoU(num_classes=self.num_classes), torchmetrics.IoU(num_classes=self.num_classes)
+        self.test_cIoU, self.val_cIoU, self.train_cIoU = torchmetrics.IoU(num_classes=self.num_classes, reduction="none"), torchmetrics.IoU(num_classes=self.num_classes, reduction="none"), torchmetrics.IoU(num_classes=self.num_classes, reduction="none")
+        self.accuracy = {
+            "train": self.train_acc, "val": self.val_acc, "test": self.test_acc
+        }
+        self.mIoU = {
+            "train": self.train_mIoU, "val": self.val_mIoU, "test": self.test_mIoU
+        }
+        self.cIoU = {
+            "train": self.train_cIoU, "val": self.val_cIoU, "test": self.test_cIoU
+        }
+
         os.makedirs(self.hparams.outf, exist_ok=True)
 
     def forward(self, x):
@@ -97,12 +108,16 @@ class LitPointNet(pl.LightningModule):
         if self.hparams.feature_transform:
             loss += feature_transform_regularizer(trans_feat) * 0.001
 
-        pred_choice = pred.data.max(1)[1]
-        correct = pred_choice.eq(target.data).sum()
-        accuracy = correct.item()/len(target)
-
         self.log(f'{set}_loss', loss, on_epoch=True, on_step=True)
-        self.log(f'{set}_accuracy', accuracy, on_epoch=True)
+
+        self.accuracy[set](pred, target)
+        self.mIoU[set](pred, target)
+        cIoU = self.cIoU[set](pred, target)
+
+        self.log(f'{set}_accuracy', self.accuracy[set], on_epoch=True, metric_attribute=f"{set}_acc")
+        self.log(f'{set}_mIoU', self.mIoU[set], on_epoch=True, metric_attribute=f"{set}_mIoU")
+        self.log(f'{set}_cIoU_1', cIoU[0], on_epoch=True)
+        self.log(f'{set}_cIoU_2', cIoU[1], on_epoch=True)
 
         return loss
 
@@ -138,7 +153,7 @@ class LitPointNet(pl.LightningModule):
         return self.predict(batch, set="train")
 
     def test_step(self, batch, batch_idx):
-        self.calc_iou(batch, set="test")
+        self.predict(batch, set="test")
         if args.viz:
             point, seg = batch
             point = point[0]
@@ -189,6 +204,10 @@ class LitPointNet(pl.LightningModule):
 if __name__ == '__main__':
     args = parser.parse_args()
     prefix = "pointnet"
+
+    if args.viz:
+        from show3d_balls import showpoints
+        import matplotlib.pyplot as plt
 
     if args.test:
         pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-epoch=530-val_loss=0.2393.ckpt")
