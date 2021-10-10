@@ -20,6 +20,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.callbacks.base import Callback
 import torchmetrics
 
+from models.pointnet2_part_seg_msg import *
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
     '--bs', type=int, default=32, help='input batch size')
@@ -44,7 +46,28 @@ RANDOM_SEED = 2  # fix seed
 random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 
+
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv2d') != -1:
+        torch.nn.init.xavier_normal_(m.weight.data)
+        torch.nn.init.constant_(m.bias.data, 0.0)
+    elif classname.find('Linear') != -1:
+        torch.nn.init.xavier_normal_(m.weight.data)
+        torch.nn.init.constant_(m.bias.data, 0.0)
+
 class LitPointNet(pl.LightningModule):
+
+    def get_model(self, name):
+        if name == "pointnet_dense_cls":
+            classifier = PointNetDenseCls(k=self.num_classes, feature_transform=self.hparams.feature_transform)
+            loss = torch.nn.NLLLoss(weight=self.hparams.class_weights)
+        elif name == "pointnet2_part_seg":
+            classifier = get_model(2, normal_channel=False)
+            loss = torch.nn.NLLLoss(weight=self.hparams.class_weights)
+            classifier = classifier.apply(weights_init)
+
+        return classifier, loss
 
     def __init__(self, conf, **kwargs):
         super().__init__()
@@ -69,11 +92,16 @@ class LitPointNet(pl.LightningModule):
 
         self.num_classes = self.train_dataset.num_seg_classes
 
-        self.classifier = PointNetDenseCls(k=self.num_classes, feature_transform=self.hparams.feature_transform)
+        self.hparams.class_weights = None
+        self.model_name = "pointnet2_part_seg"
+        #self.model_name = "pointnet_dense_cls"
+        self.classifier, self.loss = self.get_model(self.model_name)
 
         self.optimizer = optim.Adam(self.classifier.parameters(), lr=0.001, betas=(0.9, 0.999))
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=20, gamma=0.5)
-        self.loss = torch.nn.NLLLoss(weight=torch.Tensor([4.47,1], device=self.device))
+        #self.hparams.class_weights = torch.Tensor([4.47,1], device=self.device)
+
+
 
         self.test_acc, self.val_acc, self.train_acc = torchmetrics.Accuracy(), torchmetrics.Accuracy(), torchmetrics.Accuracy()
         self.test_mIoU, self.val_mIoU, self.train_mIoU = torchmetrics.IoU(num_classes=self.num_classes), torchmetrics.IoU(num_classes=self.num_classes), torchmetrics.IoU(num_classes=self.num_classes)
@@ -105,7 +133,11 @@ class LitPointNet(pl.LightningModule):
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
         # logger.debug(x.shape)
-        return self.classifier(x)
+        if self.model_name == "pointnet2_part_seg":
+            bs,_,_ = x.shape
+            return self.classifier(x, torch.ones(bs,device=self.device))
+        else:
+            return self.classifier(x)
 
     def configure_optimizers(self):
         return [self.optimizer], [self.scheduler]
@@ -115,8 +147,9 @@ class LitPointNet(pl.LightningModule):
         points = points.transpose(2, 1)
         points, target = points, target
 
-        pred, trans, trans_feat = self.forward(points)
-        pred = pred.view(-1, self.num_classes)
+        pred, _ = self.forward(points)[:2]
+        #print(pred.shape)
+        pred = pred.contiguous().view(-1, self.num_classes)
         target = target.view(-1, 1)[:, 0] - 1
         #print(pred.size(), target.size())
         loss = self.loss(pred, target)
@@ -158,7 +191,7 @@ class LitPointNet(pl.LightningModule):
             point = point.transpose(1, 0).contiguous()
 
             point = Variable(point.view(1, point.size()[0], point.size()[1]))
-            pred, _, _ = self.classifier(point)
+            pred = self.forward(point)[0]
             pred_choice = pred.data.max(2)[1]
             # print(pred_choice)
 
@@ -200,7 +233,7 @@ if __name__ == '__main__':
         import matplotlib.pyplot as plt
 
     if args.test:
-        pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-epoch=530-val_loss=0.2393.ckpt")
+        pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-last.ckpt")
         #pointnet_model.eval()
         trainer = pl.Trainer.from_argparse_args(args, accelerator="dp")
         trainer.test(pointnet_model)
@@ -210,7 +243,7 @@ if __name__ == '__main__':
             dirpath='lightning_logs',
             filename=prefix+'-{epoch}-{val_loss:.4f}',
             verbose=True,
-            monitor='train_loss',
+            monitor='val_loss',
             mode='min',
             save_last=True
         )

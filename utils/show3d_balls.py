@@ -22,7 +22,7 @@ cv2.setMouseCallback('show3d', onmouse)
 dll = np.ctypeslib.load_library('render_balls_so', '.')
 
 def showpoints(xyz,c_gt=None, c_pred = None, waittime=0,
-    showrot=False, magnifyBlue=0, freezerot=True, background=(0,0,0),
+    showrot=False, magnifyBlue=0, freezerot=True, background=(255,255,255),
     normalizecolor=True, ballradius=2):
     global showsz, mousex, mousey, zoom, changed
     xyz=xyz-xyz.mean(axis=0)

@@ -11,4 +11,6 @@ python show_seg.py --dataset ../shapenetcore_partanno_segmentation_benchmark_v0 
 
 ## pytorch lightning
 
-python3 train_segmentation_lightning.py --test --npoints 4000 --show_gt
+python3 train_segmentation_lightning.py --test --npoints 4000 --show_gt --gpus 1 --bs 1
+
+python3 train_segmentation_lightning.py --npoints 4000 --bs 8 --gpus 1
