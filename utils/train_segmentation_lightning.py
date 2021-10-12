@@ -101,7 +101,7 @@ class LitPointNet(pl.LightningModule):
         self.num_classes = self.train_dataset.num_seg_classes
 
         self.hparams.class_weights = None
-        self.hparams.model_name = "pointnet2_part_seg_ssg"
+        self.hparams.model_name = "pointnet2_part_seg_msg"
         #self.hparams.model_name = "pointnet_dense_cls"
         self.classifier = self.get_model(self.hparams.model_name)
         self.loss = torch.nn.NLLLoss(weight=self.hparams.class_weights)
@@ -205,14 +205,16 @@ class LitPointNet(pl.LightningModule):
 
             point = Variable(point.view(1, point.size()[0], point.size()[1]))
             pred = self.forward(point)[0]
-            pred_choice = pred.data.max(2)[1]
+            pred_choice = pred.data.max(2)[1].cpu().numpy()
             # print(pred_choice)
 
             #print(pred_choice.size())
-            pred_color = cmap[pred_choice.cpu().numpy()[0], :]
+            pred_color = cmap[pred_choice[0], :]
 
             if args.show_gt: file = f"{file}-gt"
+
             display_pointcloud(point_np, colors=gt if args.show_gt else pred_color, save=file, display=False)
+            extract_workpiece(point_np, pred_choice.swapaxes(0,1), save=file)
 
             #print(pred_color.shape)
 
@@ -253,7 +255,7 @@ if __name__ == '__main__':
     if args.viz:
         # from show3d_balls import showpoints
         import matplotlib.pyplot as plt
-        from display_pointcloud import *
+        from process_predictions import *
 
     if args.test:
         pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-epoch=31-val_loss=0.1596.ckpt", conf=args)
