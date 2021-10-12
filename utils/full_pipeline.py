@@ -10,6 +10,7 @@ from utils.train_segmentation_lightning import *
 from utils.process_predictions import *
 
 from tqdm import tqdm
+import gc
 
 class Scan(data.Dataset):
     def __init__(self,
@@ -26,6 +27,8 @@ class Scan(data.Dataset):
         indices = range(len(self.point_set))
 
         self.sets = []
+        self.centers = list(range(n_selections))
+        self.scales = list(range(n_selections))
 
         for n in range(n_selections):
             selected_idx = np.random.choice(range(len(indices)), self.npoints, replace=False)
@@ -34,40 +37,52 @@ class Scan(data.Dataset):
 
     def __getitem__(self, index):
 
-        try:
-            choice = self.sets[index]
-            #resample
-            point_set = self.point_set[choice, :]
+        choice = self.sets[index]
+        #resample
+        point_set = self.point_set[choice, :]
 
-            #point_set = point_set - np.expand_dims(np.mean(point_set, axis = 0), 0) # center
-            dist = np.max(np.sqrt(np.sum(point_set ** 2, axis = 1)),0)
-            point_set = point_set / dist #scale
+        center = np.expand_dims(np.mean(point_set, axis = 0), 0)
+        point_set = point_set - center # center
+        dist = np.max(np.sqrt(np.sum(point_set ** 2, axis = 1)),0)
+        point_set = point_set / dist #scale
 
-            point_set = torch.from_numpy(point_set)
+        self.centers[index] = torch.from_numpy(center).cuda()
+        self.scales[index] = dist
 
-            return point_set.unsqueeze(0)
-        except Exception as e:
-            print(f"Failed to load point set from file {self.file}: {e}")
+        point_set = torch.from_numpy(point_set).cuda()
+
+        return point_set.unsqueeze(0), self.centers[index], dist
 
     def __len__(self):
         return len(self.sets)
 
 dataset = Scan(file="/home/gala/aidenmark/inropa-sandbox/scan-glowup/data/pairs/points/20211007_142026_012345.pts")
-pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-epoch=31-val_loss=0.1596.ckpt", conf=args)
+pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-epoch=31-val_loss=0.1596.ckpt", conf=args).cuda()
+pointnet_model.eval()
+print(pointnet_model.device)
 
 full_prediction = torch.zeros(size=(1, dataset.npoints*len(dataset), 2), device=pointnet_model.device)
 full_cloud = torch.zeros(size=(1, dataset.npoints*len(dataset), 3), device=pointnet_model.device)
 
-for n,point_set in enumerate(tqdm(dataset)):
+for n,sample in enumerate(tqdm(dataset)):
     # print(point_set.shape)
+    point_set, center, scale = sample
     start_idx = n*dataset.npoints
     end_idx = start_idx + dataset.npoints
-    full_cloud[:,start_idx:end_idx,:] = point_set
+
+    point_set_orig = point_set * scale
+    point_set_orig = point_set_orig + center
+
+
+    full_cloud[:,start_idx:end_idx,:] = point_set_orig
 
     points = point_set.transpose(2, 1)
-    pred, _ = pointnet_model.forward(points)[:2]
+    with torch.no_grad():
+        pred, _ = pointnet_model.forward(points)[:2]
 
     full_prediction[:,start_idx:end_idx,:] = pred
+
+
     #print(n, full_prediction[:,start_idx,:], full_cloud[:,start_idx,:])
 
     # full_prediction.append(pred)
