@@ -41,6 +41,8 @@ parser.add_argument('--test', action='store_true', default=False)
 parser.add_argument('--viz', action='store_true', default=False)
 parser.add_argument('--show_gt', action='store_true', default=False)
 parser.add_argument('--stats', action='store_true', default=False)
+parser.add_argument('--model_name', default="pointnet2_part_seg_msg")
+args = parser.parse_args()
 
 RANDOM_SEED = 2  # fix seed
 # print("Random Seed: ", RANDOM_SEED)
@@ -101,7 +103,6 @@ class LitPointNet(pl.LightningModule):
         self.num_classes = self.train_dataset.num_seg_classes
 
         self.hparams.class_weights = None
-        self.hparams.model_name = "pointnet2_part_seg_msg"
         #self.hparams.model_name = "pointnet_dense_cls"
         self.classifier = self.get_model(self.hparams.model_name)
         self.loss = torch.nn.NLLLoss(weight=self.hparams.class_weights)
@@ -245,7 +246,7 @@ class LitPointNet(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    args = parser.parse_args()
+
 
 
     def get_save_prefix_from_model(model):
