@@ -2,11 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import open3d as o3d
 
-def display_pointcloud(xyz, colors, save=None, display=False):
+def display_pointcloud(xyz, colors, save_img=False, display=False, save_pcd=False):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(xyz)
     pcd.colors = o3d.utility.Vector3dVector(colors)
     # o3d.visualization.draw_geometries([pcd])
+    if save_pcd:
+        o3d.io.write_point_cloud(f'../results/{save_pcd}.ply', pcd)
 
     vis = o3d.visualization.Visualizer()
     vis.create_window(visible=True)
@@ -21,9 +23,11 @@ def display_pointcloud(xyz, colors, save=None, display=False):
     vis.update_geometry(pcd)
     vis.poll_events()
     vis.update_renderer()
-    if save is not None: vis.capture_screen_image(f'../results/{save}.png')
+    if save_img: vis.capture_screen_image(f'../results/{save_img}.png')
     if display: vis.run()
     vis.destroy_window()
+
+    return pcd
 
 def extract_workpiece(xyz, predictions, save=None):
     mask = predictions==1

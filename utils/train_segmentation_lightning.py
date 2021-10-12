@@ -214,8 +214,8 @@ class LitPointNet(pl.LightningModule):
 
             if args.show_gt: file = f"{file}-gt"
 
-            display_pointcloud(point_np, colors=gt if args.show_gt else pred_color, save=file, display=False)
-            extract_workpiece(point_np, pred_choice.swapaxes(0,1), save=file)
+            display_pointcloud(point_np, colors=gt if args.show_gt else pred_color, save_img=file, display=False)
+            extract_workpiece(point_np, pred_choice.swapaxes(0,1), save_img=file)
 
             #print(pred_color.shape)
 

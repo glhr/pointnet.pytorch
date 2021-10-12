@@ -10,7 +10,8 @@ from utils.train_segmentation_lightning import *
 from utils.process_predictions import *
 
 from tqdm import tqdm
-import gc
+import json
+import os
 
 class Scan(data.Dataset):
     def __init__(self,
@@ -56,64 +57,48 @@ class Scan(data.Dataset):
     def __len__(self):
         return len(self.sets)
 
-dataset = Scan(file="/home/gala/aidenmark/inropa-sandbox/scan-glowup/data/pairs/points/20211007_142026_012345.pts")
+
 pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-epoch=31-val_loss=0.1596.ckpt", conf=args).cuda()
 pointnet_model.eval()
-print(pointnet_model.device)
 
-full_prediction = torch.zeros(size=(1, dataset.npoints*len(dataset), 2), device=pointnet_model.device)
-full_cloud = torch.zeros(size=(1, dataset.npoints*len(dataset), 3), device=pointnet_model.device)
+splitfile = os.path.join(pointnet_model.hparams.dataset, 'train_test_split', 'inropa_test_file_list.json')
+#from IPython import embed; embed()
+filelist = json.load(open(splitfile, 'r'))
 
-for n,sample in enumerate(tqdm(dataset)):
-    # print(point_set.shape)
-    point_set, center, scale = sample
-    start_idx = n*dataset.npoints
-    end_idx = start_idx + dataset.npoints
+filelist = [f.split("/")[-1] for f in filelist if "012345" in f]
+print(filelist)
 
-    point_set_orig = point_set * scale
-    point_set_orig = point_set_orig + center
+for FILE in filelist:
+    dataset = Scan(file=f"/home/gala/aidenmark/inropa-sandbox/scan-glowup/data/pairs/points/{FILE}.pts")
 
+    full_prediction = torch.zeros(size=(1, dataset.npoints*len(dataset), 2), device=pointnet_model.device)
+    full_cloud = torch.zeros(size=(1, dataset.npoints*len(dataset), 3), device=pointnet_model.device)
 
-    full_cloud[:,start_idx:end_idx,:] = point_set_orig
+    for n,sample in enumerate(tqdm(dataset)):
+        # print(point_set.shape)
+        point_set, center, scale = sample
+        start_idx = n*dataset.npoints
+        end_idx = start_idx + dataset.npoints
 
-    points = point_set.transpose(2, 1)
-    with torch.no_grad():
-        pred, _ = pointnet_model.forward(points)[:2]
+        point_set_orig = point_set * scale
+        point_set_orig = point_set_orig + center
 
-    full_prediction[:,start_idx:end_idx,:] = pred
+        full_cloud[:,start_idx:end_idx,:] = point_set_orig
 
+        points = point_set.transpose(2, 1)
+        with torch.no_grad():
+            pred, _ = pointnet_model.forward(points)[:2]
 
-    #print(n, full_prediction[:,start_idx,:], full_cloud[:,start_idx,:])
+        full_prediction[:,start_idx:end_idx,:] = pred
 
-    # full_prediction.append(pred)
+    point_np = full_cloud.squeeze(0).cpu().numpy()
+    #print(point_np.shape)
+    pred_choice = full_prediction.data.max(2)[1].cpu().numpy()
+    # print(pred_choice)
 
-point_np = full_cloud.squeeze(0).cpu().numpy()
-#print(point_np.shape)
-pred_choice = full_prediction.data.max(2)[1].cpu().numpy()
-# print(pred_choice)
+    cmap = plt.cm.get_cmap("hsv", 10)
+    cmap = np.array([cmap(i) for i in range(10)])[:, :3]
+    pred_color = cmap[pred_choice[0], :]
 
-cmap = plt.cm.get_cmap("hsv", 10)
-cmap = np.array([cmap(i) for i in range(10)])[:, :3]
-pred_color = cmap[pred_choice[0], :]
-
-display_pointcloud(point_np, colors=gt if args.show_gt else pred_color, display=True)
-extract_workpiece(point_np, pred_choice.swapaxes(0,1))
-
-# npoints = 2
-# point_set = range(10)
-# n_selections = int(len(point_set)/npoints)
-# print(f"{n_selections} sets from a total of {len(point_set)}")
-#
-# indices_orig = np.array(range(len(point_set)))
-# indices = range(len(point_set))
-# print(indices)
-#
-# sets = []
-#
-# for n in range(n_selections):
-#
-#     selected_idx = np.random.choice(range(len(indices)), npoints, replace=False)
-#     print(f"--> {selected_idx}")
-#     indices = np.delete(indices,selected_idx)
-#     print(indices)
-#     sets.append(indices_orig[selected_idx])
+    display_pointcloud(point_np, colors=gt if args.show_gt else pred_color, display=False, save_pcd=FILE)
+    # extract_workpiece(point_np, pred_choice.swapaxes(0,1))
