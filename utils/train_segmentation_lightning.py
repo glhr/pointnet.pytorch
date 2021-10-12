@@ -43,8 +43,13 @@ parser.add_argument('--stats', action='store_true', default=False)
 
 RANDOM_SEED = 2  # fix seed
 # print("Random Seed: ", RANDOM_SEED)
-random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
+torch.cuda.manual_seed_all(RANDOM_SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+np.random.seed(RANDOM_SEED)
+random.seed(RANDOM_SEED)
+os.environ['PYTHONHASHSEED'] = str(RANDOM_SEED)
 
 
 def weights_init(m):
@@ -143,7 +148,7 @@ class LitPointNet(pl.LightningModule):
         return [self.optimizer], [self.scheduler]
 
     def predict(self, batch, set):
-        points, target = batch
+        points, target, file = batch
         points = points.transpose(2, 1)
         points, target = points, target
 
@@ -177,10 +182,13 @@ class LitPointNet(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         self.predict(batch, set="test")
+
         if args.viz:
-            point, seg = batch
+            point, seg, file = batch
             point = point[0]
             seg = seg[0]
+            file = file[0]
+
             # print(point.size(), seg.size())
             point_np = point.cpu().numpy()
 
@@ -189,6 +197,7 @@ class LitPointNet(pl.LightningModule):
             gt = cmap[seg.cpu().numpy() - 1, :]
 
             point = point.transpose(1, 0).contiguous()
+            # print(point_np.shape)
 
             point = Variable(point.view(1, point.size()[0], point.size()[1]))
             pred = self.forward(point)[0]
@@ -198,8 +207,12 @@ class LitPointNet(pl.LightningModule):
             #print(pred_choice.size())
             pred_color = cmap[pred_choice.cpu().numpy()[0], :]
 
+            if args.show_gt: file = f"{file}-gt"
+            display_pointcloud(point_np, colors=gt if args.show_gt else pred_color, save=file, display=False)
+
             #print(pred_color.shape)
-            showpoints(point_np, c_gt=gt if args.show_gt else None, c_pred=pred_color)
+
+            # showpoints(point_np, c_gt=gt if args.show_gt else None, c_pred=pred_color, save=file, display=True)
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
@@ -229,11 +242,12 @@ if __name__ == '__main__':
     prefix = "pointnet"
 
     if args.viz:
-        from show3d_balls import showpoints
+        # from show3d_balls import showpoints
         import matplotlib.pyplot as plt
+        from display_pointcloud import *
 
     if args.test:
-        pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-last.ckpt")
+        pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-epoch=31-val_loss=0.1596.ckpt", conf=args)
         #pointnet_model.eval()
         trainer = pl.Trainer.from_argparse_args(args, accelerator="dp")
         trainer.test(pointnet_model)

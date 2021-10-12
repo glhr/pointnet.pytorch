@@ -118,6 +118,9 @@ class ShapeNetDataset(data.Dataset):
             point_set = np.loadtxt(fn[1]).astype(np.float32)
             seg = np.loadtxt(fn[2]).astype(np.int64)
             #print(point_set.shape, seg.shape)
+            obj_class = fn[1].split("/")[-3]
+            filename = fn[1].split("/")[-1].split(".")[0]
+            file = f"{obj_class}-{filename}"
 
             choice = np.random.choice(len(seg), self.npoints, replace=True)
             #resample
@@ -142,7 +145,7 @@ class ShapeNetDataset(data.Dataset):
             if self.classification:
                 return point_set, cls
             else:
-                return point_set, seg
+                return point_set, seg, file
         except Exception as e:
             print(f"Failed to load sample {self.datapath[index]}: {e}")
 
