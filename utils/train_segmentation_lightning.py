@@ -20,7 +20,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.callbacks.base import Callback
 import torchmetrics
 
-from models.pointnet2_part_seg_msg import *
+from models.pointnet2_part_seg_ssg import PointNet2PartSSG
+from models.pointnet2_part_seg_msg import PointNet2PartMSG
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -67,12 +68,14 @@ class LitPointNet(pl.LightningModule):
         if name == "pointnet_dense_cls":
             classifier = PointNetDenseCls(k=self.num_classes, feature_transform=self.hparams.feature_transform)
             loss = torch.nn.NLLLoss(weight=self.hparams.class_weights)
-        elif name == "pointnet2_part_seg":
-            classifier = get_model(2, normal_channel=False)
-            loss = torch.nn.NLLLoss(weight=self.hparams.class_weights)
+        elif name == "pointnet2_part_seg_msg":
+            classifier = PointNet2PartMSG(2, normal_channel=False)
+            classifier = classifier.apply(weights_init)
+        elif name == "pointnet2_part_seg_ssg":
+            classifier = PointNet2PartSSG(2, normal_channel=False)
             classifier = classifier.apply(weights_init)
 
-        return classifier, loss
+        return classifier
 
     def __init__(self, conf, **kwargs):
         super().__init__()
@@ -98,9 +101,10 @@ class LitPointNet(pl.LightningModule):
         self.num_classes = self.train_dataset.num_seg_classes
 
         self.hparams.class_weights = None
-        self.model_name = "pointnet2_part_seg"
-        #self.model_name = "pointnet_dense_cls"
-        self.classifier, self.loss = self.get_model(self.model_name)
+        self.hparams.model_name = "pointnet2_part_seg_ssg"
+        #self.hparams.model_name = "pointnet_dense_cls"
+        self.classifier = self.get_model(self.hparams.model_name)
+        self.loss = torch.nn.NLLLoss(weight=self.hparams.class_weights)
 
         self.optimizer = optim.Adam(self.classifier.parameters(), lr=0.001, betas=(0.9, 0.999))
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=20, gamma=0.5)
@@ -138,7 +142,7 @@ class LitPointNet(pl.LightningModule):
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
         # logger.debug(x.shape)
-        if self.model_name == "pointnet2_part_seg":
+        if "pointnet2_part_seg" in self.hparams.model_name:
             bs,_,_ = x.shape
             return self.classifier(x, torch.ones(bs,device=self.device))
         else:
