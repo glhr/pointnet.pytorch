@@ -241,9 +241,14 @@ class LitPointNet(pl.LightningModule):
             shuffle=False,
             num_workers=self.hparams.workers)
 
+
 if __name__ == '__main__':
     args = parser.parse_args()
-    prefix = "pointnet"
+
+
+    def get_save_prefix_from_model(model):
+        prefix = f"{model.hparams.model_name}-{model.hparams.class_choice}-{model.hparams.npoints}pts"
+        return prefix
 
     if args.viz:
         # from show3d_balls import showpoints
@@ -253,10 +258,12 @@ if __name__ == '__main__':
     if args.test:
         pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-epoch=31-val_loss=0.1596.ckpt", conf=args)
         #pointnet_model.eval()
+        prefix = get_save_prefix_from_model(pointnet_model)
         trainer = pl.Trainer.from_argparse_args(args, accelerator="dp")
         trainer.test(pointnet_model)
     else:
         pointnet_model = LitPointNet(conf=args)
+        prefix = get_save_prefix_from_model(pointnet_model)
         checkpoint_callback = ModelCheckpoint(
             dirpath='lightning_logs',
             filename=prefix+'-{epoch}-{val_loss:.4f}',
