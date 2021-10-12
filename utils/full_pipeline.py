@@ -7,25 +7,39 @@ from pointnet.model import PointNetDenseCls
 import matplotlib.pyplot as plt
 
 from utils.train_segmentation_lightning import *
+from utils.process_predictions import *
+
+from tqdm import tqdm
 
 class Scan(data.Dataset):
     def __init__(self,
                  file,
                  npoints=4000):
         self.npoints = npoints
-        self.filelist = [file]
+        self.file = file
+
+        self.point_set = np.loadtxt(file).astype(np.float32)
+        n_selections = int(len(self.point_set)/self.npoints)
+        # print(f"{n_selections} sets from a total of {len(self.point_set)}")
+
+        indices_orig = np.array(range(len(self.point_set)))
+        indices = range(len(self.point_set))
+
+        self.sets = []
+
+        for n in range(n_selections):
+            selected_idx = np.random.choice(range(len(indices)), self.npoints, replace=False)
+            indices = np.delete(indices,selected_idx)
+            self.sets.append(indices_orig[selected_idx])
 
     def __getitem__(self, index):
 
         try:
-            fn = self.filelist[index]
-            point_set = np.loadtxt(fn).astype(np.float32)
-
-            choice = np.random.choice(len(point_set), self.npoints, replace=True)
+            choice = self.sets[index]
             #resample
-            point_set = point_set[choice, :]
+            point_set = self.point_set[choice, :]
 
-            point_set = point_set - np.expand_dims(np.mean(point_set, axis = 0), 0) # center
+            #point_set = point_set - np.expand_dims(np.mean(point_set, axis = 0), 0) # center
             dist = np.max(np.sqrt(np.sum(point_set ** 2, axis = 1)),0)
             point_set = point_set / dist #scale
 
@@ -33,15 +47,58 @@ class Scan(data.Dataset):
 
             return point_set.unsqueeze(0)
         except Exception as e:
-            print(f"Failed to load sample {self.filelist[index]}: {e}")
+            print(f"Failed to load point set from file {self.file}: {e}")
 
     def __len__(self):
-        return len(self.filelist)
+        return len(self.sets)
 
 dataset = Scan(file="/home/gala/aidenmark/inropa-sandbox/scan-glowup/data/pairs/points/20211007_142026_012345.pts")
-points = dataset[0]
-print(points.shape)
-points = points.transpose(2, 1)
-
 pointnet_model = LitPointNet.load_from_checkpoint("lightning_logs/pointnet-epoch=31-val_loss=0.1596.ckpt", conf=args)
-pred = pointnet_model(points)
+
+full_prediction = torch.zeros(size=(1, dataset.npoints*len(dataset), 2), device=pointnet_model.device)
+full_cloud = torch.zeros(size=(1, dataset.npoints*len(dataset), 3), device=pointnet_model.device)
+
+for n,point_set in enumerate(tqdm(dataset)):
+    # print(point_set.shape)
+    start_idx = n*dataset.npoints
+    end_idx = start_idx + dataset.npoints
+    full_cloud[:,start_idx:end_idx,:] = point_set
+
+    points = point_set.transpose(2, 1)
+    pred, _ = pointnet_model.forward(points)[:2]
+
+    full_prediction[:,start_idx:end_idx,:] = pred
+    #print(n, full_prediction[:,start_idx,:], full_cloud[:,start_idx,:])
+
+    # full_prediction.append(pred)
+
+point_np = full_cloud.squeeze(0).cpu().numpy()
+#print(point_np.shape)
+pred_choice = full_prediction.data.max(2)[1].cpu().numpy()
+# print(pred_choice)
+
+cmap = plt.cm.get_cmap("hsv", 10)
+cmap = np.array([cmap(i) for i in range(10)])[:, :3]
+pred_color = cmap[pred_choice[0], :]
+
+display_pointcloud(point_np, colors=gt if args.show_gt else pred_color, display=True)
+extract_workpiece(point_np, pred_choice.swapaxes(0,1))
+
+# npoints = 2
+# point_set = range(10)
+# n_selections = int(len(point_set)/npoints)
+# print(f"{n_selections} sets from a total of {len(point_set)}")
+#
+# indices_orig = np.array(range(len(point_set)))
+# indices = range(len(point_set))
+# print(indices)
+#
+# sets = []
+#
+# for n in range(n_selections):
+#
+#     selected_idx = np.random.choice(range(len(indices)), npoints, replace=False)
+#     print(f"--> {selected_idx}")
+#     indices = np.delete(indices,selected_idx)
+#     print(indices)
+#     sets.append(indices_orig[selected_idx])

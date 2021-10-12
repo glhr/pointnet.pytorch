@@ -25,7 +25,7 @@ def display_pointcloud(xyz, colors, save=None, display=False):
     if display: vis.run()
     vis.destroy_window()
 
-def extract_workpiece(xyz, predictions, save):
+def extract_workpiece(xyz, predictions, save=None):
     mask = predictions==1
     mask = np.stack((np.squeeze(mask,1),)*3, axis=-1)
     # print(xyz.shape, predictions.shape)
